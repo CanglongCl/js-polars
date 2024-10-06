@@ -21,10 +21,9 @@ function read_csv(buf: Uint8Array, options: ReadCsvOptions): void {
   const ptr = (
     pli.read_csv(
       buf,
-      options.inferSchemaLength ?? 100,
+      options.seperator ?? ",",
       options.chunkSize ?? 10000,
       options.hasHeader ?? true,
-      options.ignoreErrors ?? true,
       options.numRows,
       options.skipRows ?? 0,
       options.rechunk ?? false,
@@ -58,7 +57,7 @@ self.addEventListener("message", async (event) => {
         ptr: df.ptr,
       });
     }
-    
+
     default: {
       console.log("unknown method", event.data.method);
     }

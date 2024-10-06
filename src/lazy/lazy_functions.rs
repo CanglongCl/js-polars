@@ -18,8 +18,14 @@ pub struct WhenThen {
 
 #[wasm_bindgen]
 #[derive(Clone)]
-pub struct WhenThenThen {
-    inner: dsl::WhenThenThen,
+pub struct ChainedWhen {
+    inner: dsl::ChainedWhen,
+}
+
+#[wasm_bindgen]
+#[derive(Clone)]
+pub struct ChainedThen {
+    inner: dsl::ChainedThen,
 }
 
 #[wasm_bindgen]
@@ -31,13 +37,14 @@ impl When {
         }
     }
 }
+
 #[wasm_bindgen]
 impl WhenThen {
-    pub fn when(&self, predicate: &JsExpr) -> WhenThenThen {
+    pub fn when(&self, predicate: &JsExpr) -> ChainedWhen {
         let e = dsl::when(self.predicate.clone())
             .then(self.then.clone())
             .when(predicate.inner.clone());
-        WhenThenThen { inner: e }
+        ChainedWhen { inner: e }
     }
 
     pub fn otherwise(&self, expr: &JsExpr) -> JsExpr {
@@ -51,20 +58,24 @@ impl WhenThen {
 }
 
 #[wasm_bindgen]
-impl WhenThenThen {
-    pub fn when(&self, predicate: &JsExpr) -> WhenThenThen {
-        Self {
+impl ChainedWhen {
+    pub fn then(&self, expr: &JsExpr) -> ChainedThen {
+        ChainedThen {
+            inner: self.inner.clone().then(expr.inner.clone()),
+        }
+    }
+}
+
+#[wasm_bindgen]
+impl ChainedThen {
+    pub fn when(&self, predicate: &JsExpr) -> ChainedWhen {
+        ChainedWhen {
             inner: self.inner.clone().when(predicate.inner.clone()),
         }
     }
 
-    pub fn then(&self, expr: &JsExpr) -> WhenThenThen {
-        Self {
-            inner: self.inner.clone().then(expr.inner.clone()),
-        }
-    }
     pub fn otherwise(&self, expr: &JsExpr) -> JsExpr {
-        self.inner.clone().otherwise(expr.inner.clone()).into()
+        self.clone().inner.otherwise(expr.inner.clone()).into()
     }
 }
 
@@ -170,11 +181,6 @@ pub fn when(predicate: &JsExpr) -> When {
 #[wasm_bindgen]
 pub fn col(name: String) -> JsExpr {
     dsl::col(&name).into()
-}
-
-#[wasm_bindgen]
-pub fn count() -> JsExpr {
-    dsl::count().into()
 }
 
 #[wasm_bindgen]

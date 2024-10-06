@@ -16,9 +16,8 @@ const readCsvDefaultOptions = {
 };
 
 export interface ReadCsvOptions {
-  inferSchemaLength?: number;
+  seperator?: string;
   hasHeader?: boolean;
-  ignoreErrors?: boolean;
   chunkSize?: number;
   skipRows?: number;
   sep?: string;

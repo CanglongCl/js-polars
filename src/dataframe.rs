@@ -39,7 +39,7 @@ extern "C" {
 impl JsDataFrame {
     #[wasm_bindgen(constructor)]
     pub fn new0() -> Self {
-        DataFrame::new_no_checks(vec![]).into()
+        unsafe { DataFrame::empty().into() }
     }
 
     #[wasm_bindgen(js_name = "toString")]
@@ -54,10 +54,6 @@ impl JsDataFrame {
         Ok(JsDataFrame::from(df))
     }
 
-    pub fn rechunk(&mut self) -> Self {
-        self.df.agg_chunks().into()
-    }
-
     /// Format `DataFrame` as String
     pub fn as_str(&self) -> String {
         format!("{:?}", self.df)
@@ -69,12 +65,12 @@ impl JsDataFrame {
         left_on: js_sys::Array,
         right_on: js_sys::Array,
         how: &str,
-        suffix: String,
+        suffix: Option<String>,
     ) -> JsResult<JsDataFrame> {
         let how = match how {
             "left" => JoinType::Left,
             "inner" => JoinType::Inner,
-            "outer" => JoinType::Outer,
+            "full" => JoinType::Full,
             "cross" => JoinType::Cross,
             _ => panic!("not supported"),
         };
@@ -83,15 +79,20 @@ impl JsDataFrame {
 
         let df = self
             .df
-            .join(&other.df, left_on, right_on, how, Some(suffix))
+            .join(
+                &other.df,
+                left_on,
+                right_on,
+                JoinArgs::new(how).with_suffix(suffix.map(|s| s.into())),
+            )
             .map_err(JsPolarsErr::from)?;
         Ok(JsDataFrame::new(df))
     }
 
-    pub fn get_columns(&self) -> Vec<u32> {
+    pub fn get_columns(self) -> Vec<u32> {
         use wasm_bindgen::convert::IntoWasmAbi;
         self.df
-            .get_columns()
+            .take_columns()
             .clone()
             .into_iter()
             .map(|s| JsSeries::new(s).into_abi())
@@ -180,8 +181,9 @@ impl JsDataFrame {
         self.df.select_at_idx(idx).map(|s| JsSeries::new(s.clone()))
     }
     pub fn find_idx_by_name(&self, name: &str) -> Option<usize> {
-        self.df.find_idx_by_name(name)
+        self.df.get_column_index(name)
     }
+
     pub fn column(&self, name: &str) -> JsResult<JsSeries> {
         let series = self
             .df
@@ -209,7 +211,7 @@ impl JsDataFrame {
     pub fn take(&self, indices: js_sys::Array) -> JsResult<JsDataFrame> {
         let indices: Vec<u32> = indices.iter().map(|v| v.as_f64().unwrap() as u32).collect();
 
-        let indices = UInt32Chunked::from_vec("", indices);
+        let indices = UInt32Chunked::from_vec("".into(), indices);
         let df = self.df.take(&indices).map_err(JsPolarsErr::from)?;
         Ok(JsDataFrame::new(df))
     }
@@ -222,14 +224,20 @@ impl JsDataFrame {
     pub fn sort(&self, by_column: &str, reverse: bool) -> JsResult<JsDataFrame> {
         let df = self
             .df
-            .sort([by_column], reverse)
+            .sort(
+                [by_column],
+                SortMultipleOptions::default().with_order_descending(reverse),
+            )
             .map_err(JsPolarsErr::from)?;
         Ok(JsDataFrame::new(df))
     }
 
     pub fn sort_in_place(&mut self, by_column: &str, reverse: bool) -> JsResult<()> {
         self.df
-            .sort_in_place([by_column], reverse)
+            .sort_in_place(
+                [by_column],
+                SortMultipleOptions::default().with_order_descending(reverse),
+            )
             .map_err(JsPolarsErr::from)?;
         Ok(())
     }
@@ -242,19 +250,21 @@ impl JsDataFrame {
     }
 
     pub fn rename(&mut self, column: &str, new_col: &str) -> JsResult<()> {
-        self.df.rename(column, new_col).map_err(JsPolarsErr::from)?;
+        self.df
+            .rename(column, new_col.into())
+            .map_err(JsPolarsErr::from)?;
         Ok(())
     }
     pub fn replace_at_idx(&mut self, index: usize, new_col: JsSeries) -> JsResult<()> {
         self.df
-            .replace_at_idx(index, new_col.series)
+            .replace_column(index, new_col.series)
             .map_err(JsPolarsErr::from)?;
         Ok(())
     }
 
     pub fn insert_at_idx(&mut self, index: usize, new_col: JsSeries) -> JsResult<()> {
         self.df
-            .insert_at_idx(index, new_col.series)
+            .replace_column(index, new_col.series)
             .map_err(JsPolarsErr::from)?;
         Ok(())
     }
@@ -283,30 +293,14 @@ impl JsDataFrame {
 
     pub fn frame_equal(&self, other: &JsDataFrame, null_equal: bool) -> bool {
         if null_equal {
-            self.df.frame_equal_missing(&other.df)
+            self.df.equals_missing(&other.df)
         } else {
-            self.df.frame_equal(&other.df)
+            self.df.equals(&other.df)
         }
     }
-    pub fn with_row_count(&self, name: &str, offset: Option<u32>) -> JsResult<JsDataFrame> {
-        let df = self
-            .df
-            .with_row_count(name, offset)
-            .map_err(JsPolarsErr::from)?;
-        Ok(df.into())
-    }
+
     pub fn clone(&self) -> Self {
         JsDataFrame::new(self.df.clone())
-    }
-    pub fn melt(&self, id_vars: js_sys::Array, value_vars: js_sys::Array) -> JsResult<JsDataFrame> {
-        let df = self
-            .df
-            .melt(
-                id_vars.iter().map(|v| v.as_string().unwrap()),
-                value_vars.iter().map(|v| v.as_string().unwrap()),
-            )
-            .map_err(JsPolarsErr::from)?;
-        Ok(JsDataFrame::new(df))
     }
 
     pub fn shift(&self, periods: f64) -> Self {
@@ -331,8 +325,8 @@ impl JsDataFrame {
         let subset = subset.as_ref().map(|v| v.as_ref());
 
         let df = match maintain_order {
-            true => self.df.unique_stable(subset, keep),
-            false => self.df.unique(subset, keep),
+            true => self.df.unique_stable(subset, keep, None),
+            false => self.df.unique::<(), ()>(subset, keep, None),
         }
         .map_err(JsPolarsErr::from)
         .unwrap();
@@ -343,29 +337,6 @@ impl JsDataFrame {
         self.df.clone().lazy().into()
     }
 
-    pub fn max(&self) -> Self {
-        self.df.max().into()
-    }
-
-    pub fn min(&self) -> Self {
-        self.df.min().into()
-    }
-
-    pub fn sum(&self) -> Self {
-        self.df.sum().into()
-    }
-
-    pub fn mean(&self) -> Self {
-        self.df.mean().into()
-    }
-
-    pub fn var(&self) -> Self {
-        todo!()
-    }
-
-    pub fn median(&self) -> Self {
-        self.df.median().into()
-    }
     pub fn null_count(&self) -> Self {
         let df = self.df.null_count();
         df.into()
@@ -379,7 +350,7 @@ impl JsDataFrame {
             let obj = js_sys::Object::new();
 
             for col in self.df.get_columns() {
-                let key: JsValue = col.name().into();
+                let key: JsValue = col.name().to_string().into();
                 let val: JsValue = Wrap(col.get(idx as usize).unwrap()).into();
                 js_sys::Reflect::set(&obj, &key, &val)?;
             }
@@ -398,26 +369,12 @@ impl JsDataFrame {
             let obj = js_sys::Object::new();
 
             for col in self.df.get_columns() {
-                let key: JsValue = col.name().into();
+                let key: JsValue = col.name().to_string().into();
                 let val: JsValue = Wrap(col.get(idx as usize).unwrap()).into();
                 js_sys::Reflect::set(&obj, &key, &val)?;
             }
             f.call1(&this, &obj)?;
         }
         Ok(())
-    }
-
-    pub fn to_object(&mut self) -> JsResult<js_sys::Object> {
-        todo!()
-        // let obj = js_sys::Object::new();
-        // self.df.rechunk();
-
-        // for col in self.df.get_columns() {
-        //     let key: JsValue = col.name().into();
-        //     let val: JsValue = Wrap(col).into();
-        //     js_sys::Reflect::set(&obj, &key, &val)?;
-        // }
-
-        // Ok(obj)
     }
 }

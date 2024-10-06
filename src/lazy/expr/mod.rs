@@ -118,10 +118,7 @@ impl JsExpr {
     pub fn arg_sort(&self, reverse: bool) -> JsExpr {
         self.clone()
             .inner
-            .arg_sort(SortOptions {
-                descending: reverse,
-                nulls_last: true,
-            })
+            .arg_sort(SortOptions::default().with_order_descending(reverse))
             .into()
     }
 
@@ -363,44 +360,30 @@ impl JsExpr {
         self.clone().inner.last().into()
     }
 
-    pub fn list(&self) -> JsExpr {
-        self.clone().inner.list().into()
-    }
-
-    pub fn quantile(&self, _quantile: &JsExpr) -> JsExpr {
-        todo!()
-    }
-
-    pub fn value_counts(&self, multithreaded: bool, sorted: bool) -> JsExpr {
+    pub fn value_counts(&self, sorted: bool) -> JsExpr {
         self.inner
             .clone()
-            .value_counts(multithreaded, sorted)
+            .value_counts(sorted, true, "count", false)
             .into()
     }
 
     pub fn unique_counts(&self) -> JsExpr {
-        self.inner.clone().unique_counts().into()
+        self.inner.clone().n_unique().into()
     }
 
     pub fn sort_with(&self, descending: bool, nulls_last: bool) -> JsExpr {
         self.clone()
             .inner
-            .sort_with(SortOptions {
-                descending,
-                nulls_last,
-            })
+            .sort(
+                SortOptions::default()
+                    .with_order_descending(descending)
+                    .with_nulls_last(nulls_last),
+            )
             .into()
     }
 
-    pub fn take(&self, idx: &JsExpr) -> JsExpr {
-        self.clone().inner.take(idx.inner.clone()).into()
-    }
-    pub fn sort_by() -> JsExpr {
-        todo!()
-    }
-
     pub fn shift(&self, periods: i64) -> JsExpr {
-        self.clone().inner.shift(periods).into()
+        self.clone().inner.shift(lit(periods)).into()
     }
 
     pub fn shift_and_fill(&self, periods: i64, fill_value: &JsExpr) -> JsExpr {
@@ -440,25 +423,7 @@ impl JsExpr {
         let ddof = ddof.unwrap_or(1);
         self.clone().inner.var(ddof).into()
     }
-    pub fn is_unique(&self) -> JsExpr {
-        self.clone().inner.is_unique().into()
-    }
 
-    pub fn is_first(&self) -> JsExpr {
-        self.clone().inner.is_first().into()
-    }
-
-    pub fn take_every(&self, n: i64) -> JsExpr {
-        self.clone()
-            .inner
-            .map(
-                move |s: Series| Ok(s.take_every(n as usize)),
-                GetOutput::same_type(),
-            )
-            .with_fmt("take_every")
-            .into()
-    }
-    
     pub fn tail(&self, n: Option<i64>) -> JsExpr {
         let n = n.map(|v| v as usize);
         self.clone().inner.tail(n).into()
@@ -487,9 +452,5 @@ impl JsExpr {
     }
     pub fn clip(&self) -> JsExpr {
         todo!()
-    }
-
-    pub fn is_duplicated(&self) -> JsExpr {
-        self.clone().inner.is_duplicated().into()
     }
 }

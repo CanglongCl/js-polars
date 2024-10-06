@@ -88,7 +88,7 @@ impl FromJsValue for AnyValue<'_> {
             }
             "string" => {
                 let s: String = js_sys::JsString::unchecked_from_js(jsv).into();
-                AnyValue::Utf8(Box::leak::<'_>(s.into_boxed_str()))
+                AnyValue::String(Box::leak::<'_>(s.into_boxed_str()))
             }
             "bigint" => {
                 let num = jsv.as_string().unwrap().parse::<u64>().unwrap();
@@ -110,30 +110,6 @@ impl FromJsValue for AnyValue<'_> {
     }
 }
 
-impl From<Wrap<&Series>> for JsValue {
-    fn from(val: Wrap<&Series>) -> Self {
-        let s = val.0;
-        let len = s.len();
-        let dtype = s.dtype();
-
-        match dtype {
-            DataType::Struct(_) => {
-                let ca = s.struct_().unwrap();
-                let df: DataFrame = ca.clone().into();
-                df_to_struct(&df).unwrap().into()
-            }
-            _ => {
-                let arr = js_sys::Array::new_with_length(len as u32);
-
-                for (idx, val) in s.iter().enumerate() {
-                    arr.set(idx as u32, Wrap(val).into());
-                }
-                arr.into()
-            }
-        }
-    }
-}
-
 impl From<Wrap<AnyValue<'_>>> for JsValue {
     fn from(av: Wrap<AnyValue<'_>>) -> Self {
         match av.0 {
@@ -149,9 +125,13 @@ impl From<Wrap<AnyValue<'_>>> for JsValue {
             AnyValue::Float64(v) => v.into(),
             AnyValue::Null => JsValue::null(),
             AnyValue::Boolean(v) => v.into(),
-            AnyValue::Utf8(v) => v.into(),
-            AnyValue::Categorical(idx, rev) => {
-                let s = rev.get(idx);
+            AnyValue::String(v) => v.into(),
+            AnyValue::Categorical(idx, rev, arr) | AnyValue::Enum(idx, rev, arr) => {
+                let s = if arr.is_null() {
+                    rev.get(idx)
+                } else {
+                    unsafe { arr.deref_unchecked().value(idx as usize) }
+                };
                 s.into()
             }
             AnyValue::Date(v) => {

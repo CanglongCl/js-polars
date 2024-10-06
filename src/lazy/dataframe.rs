@@ -17,16 +17,23 @@ impl From<LazyFrame> for JsLazyFrame {
 }
 
 impl JsLazyFrame {
-    fn get_schema(&self) -> JsResult<SchemaRef> {
-        self.ldf.schema().map_err(|e| JsPolarsErr::from(e).into())
+    fn collect_schema(&mut self) -> JsResult<SchemaRef> {
+        self.ldf
+            .collect_schema()
+            .map_err(|e| JsPolarsErr::from(e).into())
     }
 }
 
 #[wasm_bindgen(js_class=LazyFrame)]
 impl JsLazyFrame {
     #[wasm_bindgen(getter)]
-    pub fn columns(&self) -> JsResult<JsValue> {
-        let cols: Vec<String> = self.get_schema()?.iter_names().cloned().collect();
+    pub fn columns(&mut self) -> JsResult<JsValue> {
+        let cols: Vec<String> = self
+            .collect_schema()?
+            .iter_names()
+            .cloned()
+            .map(|s| s.to_string())
+            .collect();
         serde_wasm_bindgen::to_value(&cols).map_err(|e| JsPolarsErr::from(e).into())
     }
 
@@ -57,8 +64,8 @@ impl JsLazyFrame {
     }
 
     /// A string representation of the unoptimized query plan.
-    pub fn describe_plan(&self) -> String {
-        self.ldf.describe_plan()
+    pub fn describe_plan(&self) -> JsResult<String> {
+        Ok(self.ldf.describe_plan().map_err(JsError::from)?)
     }
 
     /// Remove one or multiple columns from a DataFrame.
@@ -81,18 +88,21 @@ impl JsLazyFrame {
                 .into();
         } else {
             let cols: Vec<String> = serde_wasm_bindgen::from_value(cols).unwrap();
-            let cols: Vec<Expr> = cols.iter().map(|name| col(&name)).collect();
+            let cols: Vec<Expr> = cols
+                .iter()
+                .map(|name| col(PlSmallStr::from(name)))
+                .collect();
             return self.ldf.clone().drop_nulls(Some(cols)).into();
         }
     }
+
     pub fn sort(&self, by_column: &str, reverse: bool, nulls_last: bool) -> JsLazyFrame {
         let ldf = self.ldf.clone();
         ldf.sort(
-            by_column,
-            SortOptions {
-                descending: reverse,
-                nulls_last,
-            },
+            [by_column],
+            SortMultipleOptions::default()
+                .with_order_descending(reverse)
+                .with_nulls_last(nulls_last),
         )
         .into()
     }
@@ -108,7 +118,14 @@ impl JsLazyFrame {
         let reverse: Vec<bool> =
             serde_wasm_bindgen::from_value(reverse).map_err(JsPolarsErr::from)?;
         let exprs = js_exprs_to_exprs(by_column)?;
-        Ok(ldf.sort_by_exprs(exprs, reverse, nulls_last).into())
+        Ok(ldf
+            .sort_by_exprs(
+                exprs,
+                SortMultipleOptions::default()
+                    .with_order_descending_multi(reverse)
+                    .with_nulls_last(nulls_last),
+            )
+            .into())
     }
 
     pub fn join(
@@ -127,13 +144,12 @@ impl JsLazyFrame {
         let right_on = js_exprs_to_exprs(right_on)?;
         let how = match how {
             "left" => JoinType::Left,
+            "right" => JoinType::Right,
             "inner" => JoinType::Inner,
-            "outer" => JoinType::Outer,
-            "semi" => JoinType::Semi,
-            "anti" => JoinType::Anti,
+            "full" => JoinType::Full,
             _ => {
                 return Err(JsPolarsErr::Other(
-                    "how should be one of inner, left, right, outer".into(),
+                    "how should be one of inner, left, full".into(),
                 )
                 .into())
             }

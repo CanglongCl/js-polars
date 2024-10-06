@@ -63,25 +63,29 @@ impl JsSeries {
         unsafe { JsSeries::from_abi(ptr) }
     }
     pub fn new_str(name: &str, values: &js_sys::Array) -> JsResult<JsSeries> {
-        let series = Utf8Chunked::from_iter_options(name, values.iter().map(|v| v.as_string()))
-            .into_series();
+        let series =
+            StringChunked::from_iter_options(name.into(), values.iter().map(|v| v.as_string()))
+                .into_series();
         Ok(JsSeries { series })
     }
     pub fn new_bool(name: &str, values: &js_sys::Array) -> JsResult<JsSeries> {
-        let series = BooleanChunked::from_iter_options(name, values.iter().map(|v| v.as_bool()))
-            .into_series();
+        let series =
+            BooleanChunked::from_iter_options(name.into(), values.iter().map(|v| v.as_bool()))
+                .into_series();
 
         Ok(JsSeries { series })
     }
     pub fn new_f64(name: &str, values: &js_sys::Array) -> JsResult<JsSeries> {
-        let series =
-            Float64Chunked::from_iter_options(name, values.iter().map(|v: JsValue| v.as_f64()))
-                .into_series();
+        let series = Float64Chunked::from_iter_options(
+            name.into(),
+            values.iter().map(|v: JsValue| v.as_f64()),
+        )
+        .into_series();
         Ok(JsSeries { series })
     }
     pub fn new_i8(name: &str, values: &js_sys::Array) -> JsResult<JsSeries> {
         let series = Int8Chunked::from_iter_options(
-            name,
+            name.into(),
             values.iter().map(|v: JsValue| v.as_f64().map(|n| n as i8)),
         )
         .into_series();
@@ -89,73 +93,66 @@ impl JsSeries {
     }
     pub fn new_series_list(name: &str, val: SeriesArray, _strict: bool) -> Self {
         let vals = val.into_iter().map(|x| x.series).collect::<Box<[Series]>>();
-        Series::new(name, &vals).into()
+        Series::new(name.into(), &vals).into()
     }
 
     pub fn new_int_8_array(name: String, arr: &mut [i8]) -> JsSeries {
-        Series::new(&name, arr).into()
+        Series::new(name.into(), arr).into()
     }
 
     pub fn new_uint_8_array(name: String, arr: &mut [u8]) -> JsSeries {
-        Series::new(&name, arr).into()
+        Series::new(name.into(), arr).into()
     }
 
     pub fn new_int_16_array(name: String, arr: &mut [i16]) -> JsSeries {
-        Series::new(&name, arr).into()
+        Series::new(name.into(), arr).into()
     }
 
     pub fn new_uint_16_array(name: String, arr: &mut [u16]) -> JsSeries {
-        Series::new(&name, arr).into()
+        Series::new(name.into(), arr).into()
     }
 
     pub fn new_int_32_array(name: String, arr: &mut [i32]) -> JsSeries {
-        Series::new(&name, arr).into()
+        Series::new(name.into(), arr).into()
     }
 
     pub fn new_uint_32_array(name: String, arr: &mut [u32]) -> JsSeries {
-        Series::new(&name, arr).into()
+        Series::new(name.into(), arr).into()
     }
 
     pub fn new_int_64_array(name: String, arr: &mut [i64]) -> JsSeries {
-        Series::new(&name, arr).into()
+        Series::new(name.into(), arr).into()
     }
 
     pub fn new_uint_64_array(name: String, arr: &mut [u64]) -> JsSeries {
-        Series::new(&name, arr).into()
+        Series::new(name.into(), arr).into()
     }
 
     pub fn new_float_32_array(name: String, arr: &mut [f32]) -> JsSeries {
-        Series::new(&name, arr).into()
+        Series::new(name.into(), arr).into()
     }
 
     pub fn new_float_64_array(name: String, arr: &mut [f64]) -> JsSeries {
-        Series::new(&name, arr).into()
+        Series::new(name.into(), arr).into()
     }
 
     pub fn new_opt_str_array(name: String, arr: js_sys::Array) -> JsSeries {
-        let len = arr.length() as usize;
-        let mut builder = Utf8ChunkedBuilder::new(&name, len, len * 25);
-        for value in arr.iter() {
-            if value.is_null() {
-                builder.append_null();
-            } else {
-                builder.append_value(value.as_string().unwrap().as_str());
-            }
-        }
-        builder.finish().into_series().into()
+        let s: Series = arr
+            .iter()
+            .map(|v| {
+                if v.is_null() || v.is_undefined() {
+                    None
+                } else {
+                    v.as_string()
+                }
+            })
+            .collect();
+        s.with_name(name.into()).into()
     }
 
     pub fn new_opt_bool_array(name: String, arr: js_sys::Array) -> JsSeries {
-        let len = arr.length() as usize;
-        let mut builder = BooleanChunkedBuilder::new(&name, len);
-        for value in arr.iter() {
-            if value.is_null() {
-                builder.append_null();
-            } else {
-                builder.append_option(value.as_bool());
-            }
-        }
-        builder.finish().into_series().into()
+        let s: Series = arr.iter().map(|v| v.as_bool()).collect();
+        s.with_name(name.into()).into()
     }
 
     pub fn get_idx(&self, idx: usize) -> JsResult<JsValue> {
@@ -165,8 +162,9 @@ impl JsSeries {
 
     #[wasm_bindgen(getter)]
     pub fn name(&self) -> String {
-        self.series.name().to_owned()
+        self.series.name().to_owned().into_string()
     }
+
     pub fn to_string(&self) -> String {
         format!("{}", self.series)
     }
@@ -205,28 +203,15 @@ impl JsSeries {
             .map_err(JsPolarsErr::from)?;
         Ok(out.into())
     }
-    pub fn cumsum(&self, reverse: Option<bool>) -> JsSeries {
-        let reverse = reverse.unwrap_or(false);
-        self.series.cumsum(reverse).into()
-    }
-    pub fn cummax(&self, reverse: Option<bool>) -> JsSeries {
-        let reverse = reverse.unwrap_or(false);
-        self.series.cummax(reverse).into()
-    }
-    pub fn cummin(&self, reverse: Option<bool>) -> JsSeries {
-        let reverse = reverse.unwrap_or(false);
-        self.series.cummin(reverse).into()
-    }
-    pub fn cumprod(&self, reverse: Option<bool>) -> JsSeries {
-        let reverse = reverse.unwrap_or(false);
-        self.series.cumprod(reverse).into()
-    }
+
     pub fn chunk_lengths(&self) -> Vec<u32> {
         self.series.chunk_lengths().map(|i| i as u32).collect()
     }
+
     pub fn rename(&mut self, name: String) {
-        self.series.rename(&name);
+        self.series.rename(name.into());
     }
+
     pub fn mean(&self) -> Option<f64> {
         match self.series.dtype() {
             DataType::Boolean => {
@@ -273,24 +258,29 @@ impl JsSeries {
         }
     }
 
-    pub fn add(&self, other: &JsSeries) -> JsSeries {
-        (&self.series + &other.series).into()
+    pub fn add(&self, other: &JsSeries) -> JsResult<JsSeries> {
+        let s = (&self.series + &other.series).map_err(JsPolarsErr::from)?;
+        Ok(s.into())
     }
 
-    pub fn sub(&self, other: &JsSeries) -> JsSeries {
-        (&self.series - &other.series).into()
+    pub fn sub(&self, other: &JsSeries) -> JsResult<JsSeries> {
+        let s = (&self.series - &other.series).map_err(JsPolarsErr::from)?;
+        Ok(s.into())
     }
 
-    pub fn mul(&self, other: &JsSeries) -> JsSeries {
-        (&self.series * &other.series).into()
+    pub fn mul(&self, other: &JsSeries) -> JsResult<JsSeries> {
+        let s = (&self.series * &other.series).map_err(JsPolarsErr::from)?;
+        Ok(s.into())
     }
 
-    pub fn div(&self, other: &JsSeries) -> JsSeries {
-        (&self.series / &other.series).into()
+    pub fn div(&self, other: &JsSeries) -> JsResult<JsSeries> {
+        let s = (&self.series / &other.series).map_err(JsPolarsErr::from)?;
+        Ok(s.into())
     }
 
-    pub fn rem(&self, other: &JsSeries) -> JsSeries {
-        (&self.series % &other.series).into()
+    pub fn rem(&self, other: &JsSeries) -> JsResult<JsSeries> {
+        let s = (&self.series % &other.series).map_err(JsPolarsErr::from)?;
+        Ok(s.into())
     }
 
     pub fn head(&self, length: Option<i64>) -> JsSeries {
@@ -301,16 +291,22 @@ impl JsSeries {
         (self.series.tail(length.map(|l| l as usize))).into()
     }
 
-    pub fn sort(&self, reverse: Option<bool>) -> JsSeries {
+    pub fn sort(&self, reverse: Option<bool>) -> JsResult<JsSeries> {
         let reverse = reverse.unwrap_or(false);
-        self.series.sort(reverse).into()
+        let s = self
+            .series
+            .sort(SortOptions::default().with_order_descending(reverse))
+            .map_err(JsPolarsErr::from)?;
+        Ok(s.into())
     }
 
     pub fn argsort(&self, reverse: bool, nulls_last: bool) -> JsSeries {
         self.series
-            .argsort(SortOptions {
+            .arg_sort(SortOptions {
                 descending: reverse,
                 nulls_last,
+                multithreaded: true,
+                maintain_order: false,
             })
             .into_series()
             .into()
@@ -324,14 +320,6 @@ impl JsSeries {
     pub fn unique_stable(&self) -> JsResult<JsSeries> {
         let unique = self.series.unique_stable().map_err(JsPolarsErr::from)?;
         Ok(unique.into())
-    }
-
-    pub fn value_counts(&self, sorted: bool) -> JsResult<JsDataFrame> {
-        let df = self
-            .series
-            .value_counts(true, sorted)
-            .map_err(JsPolarsErr::from)?;
-        Ok(df.into())
     }
 
     pub fn arg_unique(&self) -> JsResult<JsSeries> {
@@ -348,7 +336,7 @@ impl JsSeries {
     }
 
     pub fn take(&self, indices: Vec<u32>) -> JsResult<JsSeries> {
-        let indices = UInt32Chunked::from_vec("", indices);
+        let indices = UInt32Chunked::from_vec("".into(), indices);
 
         let take = self.series.take(&indices).map_err(JsPolarsErr::from)?;
         Ok(JsSeries::new(take))
@@ -362,10 +350,6 @@ impl JsSeries {
 
     pub fn null_count(&self) -> JsResult<i64> {
         Ok(self.series.null_count() as i64)
-    }
-
-    pub fn has_validity(&self) -> bool {
-        self.series.has_validity()
     }
 
     pub fn is_null(&self) -> JsSeries {
@@ -396,11 +380,6 @@ impl JsSeries {
         Ok(ca.into_series().into())
     }
 
-    pub fn is_unique(&self) -> JsResult<JsSeries> {
-        let ca = self.series.is_unique().map_err(JsPolarsErr::from)?;
-        Ok(ca.into_series().into())
-    }
-
     pub fn sample_frac(
         &self,
         frac: f64,
@@ -417,29 +396,9 @@ impl JsSeries {
         Ok(s.into())
     }
 
-    pub fn is_duplicated(&self) -> JsResult<JsSeries> {
-        let ca = self.series.is_duplicated().map_err(JsPolarsErr::from)?;
-        Ok(ca.into_series().into())
-    }
-
     pub fn explode(&self) -> JsResult<JsSeries> {
         let s = self.series.explode().map_err(JsPolarsErr::from)?;
         Ok(s.into())
-    }
-
-    pub fn take_every(&self, n: i64) -> JsSeries {
-        let s = self.series.take_every(n as usize);
-        s.into()
-    }
-
-    pub fn series_equal(&self, other: &JsSeries, null_equal: bool, strict: bool) -> bool {
-        if strict {
-            self.series.eq(&other.series)
-        } else if null_equal {
-            self.series.series_equal_missing(&other.series)
-        } else {
-            self.series.series_equal(&other.series)
-        }
     }
 
     pub fn eq(&self, rhs: &JsSeries) -> JsResult<JsSeries> {
@@ -563,94 +522,10 @@ impl JsSeries {
         Ok(JsSeries::new(s))
     }
 
-    // pub fn strftime(&self, fmt: &str) -> JsResult<JsSeries> {
-    //     let s = self.series.strftime(fmt).map_err(JsPolarsErr::from)?;
-    //     Ok(s.into())
-    // }
-
     pub fn arr_lengths(&self) -> JsResult<JsSeries> {
         let ca = self.series.list().map_err(JsPolarsErr::from)?;
         let s = ca.lst_lengths().into_series();
         Ok(JsSeries::new(s))
-    }
-
-    // // pub fn timestamp(&self, tu: Wrap<TimeUnit>) -> JsResult<JsSeries> {
-    // //     let ca = self.series.timestamp(tu.0).map_err(JsPolarsErr::from)?;
-    // //     Ok(ca.into_series().into())
-    // // }
-    pub fn get_list(&self, index: usize) -> Option<JsSeries> {
-        if let Ok(ca) = &self.series.list() {
-            let s = ca.get(index);
-            s.map(|s| s.into())
-        } else {
-            None
-        }
-    }
-
-    // pub fn year(&self) -> JsResult<JsSeries> {
-    //     let s = self.series.year().map_err(JsPolarsErr::from)?;
-    //     Ok(s.into_series().into())
-    // }
-
-    // pub fn month(&self) -> JsResult<JsSeries> {
-    //     let s = self.series.month().map_err(JsPolarsErr::from)?;
-    //     Ok(s.into_series().into())
-    // }
-
-    // pub fn weekday(&self) -> JsResult<JsSeries> {
-    //     let s = self.series.weekday().map_err(JsPolarsErr::from)?;
-    //     Ok(s.into_series().into())
-    // }
-
-    // pub fn week(&self) -> JsResult<JsSeries> {
-    //     let s = self.series.week().map_err(JsPolarsErr::from)?;
-    //     Ok(s.into_series().into())
-    // }
-
-    // pub fn day(&self) -> JsResult<JsSeries> {
-    //     let s = self.series.day().map_err(JsPolarsErr::from)?;
-    //     Ok(s.into_series().into())
-    // }
-
-    // pub fn ordinal_day(&self) -> JsResult<JsSeries> {
-    //     let s = self.series.ordinal_day().map_err(JsPolarsErr::from)?;
-    //     Ok(s.into_series().into())
-    // }
-
-    // pub fn hour(&self) -> JsResult<JsSeries> {
-    //     let s = self.series.hour().map_err(JsPolarsErr::from)?;
-    //     Ok(s.into_series().into())
-    // }
-
-    // pub fn minute(&self) -> JsResult<JsSeries> {
-    //     let s = self.series.minute().map_err(JsPolarsErr::from)?;
-    //     Ok(s.into_series().into())
-    // }
-
-    // pub fn second(&self) -> JsResult<JsSeries> {
-    //     let s = self.series.second().map_err(JsPolarsErr::from)?;
-    //     Ok(s.into_series().into())
-    // }
-
-    // pub fn nanosecond(&self) -> JsResult<JsSeries> {
-    //     let s = self.series.nanosecond().map_err(JsPolarsErr::from)?;
-    //     Ok(s.into_series().into())
-    // }
-
-    // pub fn dt_epoch_seconds(&self) -> JsResult<JsSeries> {
-    //     let ms = self
-    //         .series
-    //         .timestamp(TimeUnit::Milliseconds)
-    //         .map_err(JsPolarsErr::from)?;
-    //     Ok((ms / 1000).into_series().into())
-    // }
-
-    pub fn peak_max(&self) -> Self {
-        self.series.peak_max().into_series().into()
-    }
-
-    pub fn peak_min(&self) -> Self {
-        self.series.peak_min().into_series().into()
     }
 
     pub fn n_unique(&self) -> JsResult<usize> {
@@ -668,16 +543,6 @@ impl JsSeries {
         // Ok(out.into())
     }
 
-    pub fn round(&self, decimals: u32) -> JsResult<JsSeries> {
-        let s = self.series.round(decimals).map_err(JsPolarsErr::from)?;
-        Ok(s.into())
-    }
-
-    pub fn floor(&self) -> JsResult<JsSeries> {
-        let s = self.series.floor().map_err(JsPolarsErr::from)?;
-        Ok(s.into())
-    }
-
     pub fn shrink_to_fit(&mut self) {
         self.series.shrink_to_fit();
     }
@@ -685,38 +550,6 @@ impl JsSeries {
     pub fn dot(&self, _other: &JsSeries) -> Option<f64> {
         todo!()
         // self.series.dot(&other.series)
-    }
-
-    // pub fn hash(&self, k0: u64, k1: u64, k2: u64, k3: u64) -> Self {
-    //     todo!()
-    // let hb = polars::export::ahash::RandomState::with_seeds(k0, k1, k2, k3);
-    // self.series.hash(hb).into_series().into()
-    // }
-
-    // pub fn reinterpret(&self, signed: bool) -> JsResult<JsSeries> {
-    //     todo!()
-    // let s = reinterpret(&self.series, signed).map_err(JsPolarsErr::from)?;
-    // Ok(s.into())
-    // }
-
-    pub fn mode(&self) -> JsResult<JsSeries> {
-        let s = self.series.mode().map_err(JsPolarsErr::from)?;
-        Ok(s.into())
-    }
-
-    pub fn interpolate(&self) -> Self {
-        todo!()
-        // let s = self.series.interpolate();
-        // s.into()
-    }
-    pub fn rank(&self, _method: &str, _reverse: bool) -> JsResult<JsSeries> {
-        todo!()
-        // let method = str_to_rankmethod(method).unwrap();
-        // let options = RankOptions {
-        //     method,
-        //     descending: reverse,
-        // };
-        // Ok(self.series.rank(options).into())
     }
 
     pub fn dtype(&self) -> String {

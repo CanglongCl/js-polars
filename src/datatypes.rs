@@ -13,7 +13,7 @@ pub enum JsDataType {
     Float32,
     Float64,
     Bool,
-    Utf8,
+    String,
     List,
     Date,
     Datetime,
@@ -36,7 +36,7 @@ impl JsDataType {
             JsDataType::Float32 => "Float32",
             JsDataType::Float64 => "Float64",
             JsDataType::Bool => "Bool",
-            JsDataType::Utf8 => "Utf8",
+            JsDataType::String => "String",
             JsDataType::List => "List",
             JsDataType::Date => "Date",
             JsDataType::Datetime => "Datetime",
@@ -63,14 +63,14 @@ impl From<&DataType> for JsDataType {
             DataType::Float32 => Float32,
             DataType::Float64 => Float64,
             DataType::Boolean => Bool,
-            DataType::Utf8 => Utf8,
+            DataType::String => String,
             DataType::List(_) => List,
             DataType::Date => Date,
             DataType::Datetime(_, _) => Datetime,
             DataType::Time => Time,
 
             // DataType::Object(_) => Object,
-            DataType::Categorical(_) => Categorical,
+            DataType::Categorical(_, _) => Categorical,
             _ => {
                 panic!("null or unknown not expected here")
             }

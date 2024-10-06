@@ -5,7 +5,7 @@ pub trait IntoRustStruct<T: FromWasmAbi<Abi = u32>> {
 }
 
 pub trait RefRustStruct<'a, T: RefFromWasmAbi<Abi = u32>> {
-    fn ref_rust(self) -> wasm_bindgen::__rt::Ref<'static, T>;
+    fn ref_rust(self) -> wasm_bindgen::__rt::RcRef<T>;
 }
 
 #[macro_export]
@@ -26,7 +26,7 @@ macro_rules! extern_struct {
             }
 
             impl<'a> crate::conversion::extern_struct::RefRustStruct<'a, $y> for &'a $x {
-                fn ref_rust(self) -> wasm_bindgen::__rt::Ref<'static, $y> {
+                fn ref_rust(self) -> wasm_bindgen::__rt::RcRef<$y> {
                     unsafe { $y::ref_from_abi(self.[<$x _ptr>]() as u32) }
                 }
             }
